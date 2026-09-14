@@ -3,25 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Whereabouts & Status Tracker</title>
-    <!-- Tailwind CSS CDN for styling -->
+    <title>Student Whereabouts & Status Tracker (Live)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase App (Compat) & Realtime Database CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-p-4">
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen pb-12">
 
     <div class="max-w-4xl mx-auto px-4 py-8">
         <!-- Header -->
         <header class="bg-white shadow rounded-lg p-6 mb-6">
-            <h1 class="text-2xl font-bold text-gray-900 mb-2">Student Whereabouts & Status Tracker</h1>
-            <p class="text-gray-600 text-sm">
-                Please locate your name below and select your current status. If you select <strong>On the way</strong>, enter your Estimated Arrival Time (ETA).
-            </p>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Student Whereabouts & Status Tracker</h1>
+                    <p class="text-gray-600 text-sm mt-1">Select your status below. Updates sync live across all devices instantly.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="connection-status" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full font-medium">
+                        Connecting to cloud...
+                    </span>
+                    <button onclick="toggleSettings()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium border transition-colors">
+                        ⚙️ Manage Roster
+                    </button>
+                </div>
+            </div>
             
             <!-- Summary Stats -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
                 <div class="bg-gray-50 p-3 rounded-lg border text-center">
                     <span class="block text-xs font-semibold text-gray-500 uppercase">Total Students</span>
-                    <span id="stat-total" class="text-xl font-bold text-gray-800">36</span>
+                    <span id="stat-total" class="text-xl font-bold text-gray-800">0</span>
                 </div>
                 <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 text-center">
                     <span class="block text-xs font-semibold text-amber-700 uppercase">On The Way</span>
@@ -33,18 +45,35 @@
                 </div>
                 <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-center">
                     <span class="block text-xs font-semibold text-slate-600 uppercase">No Update</span>
-                    <span id="stat-noupdate" class="text-xl font-bold text-slate-700">36</span>
+                    <span id="stat-noupdate" class="text-xl font-bold text-slate-700">0</span>
                 </div>
             </div>
         </header>
 
-        <!-- Controls / Search -->
+        <!-- Settings Panel for Custom Roster -->
+        <div id="settings-panel" class="hidden bg-white shadow rounded-lg p-6 mb-6 border-2 border-blue-100">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">Edit Class Student List</h3>
+            <p class="text-xs text-gray-600 mb-4">Modify student names below (one name per line). This will update the live cloud roster for everyone.</p>
+            <textarea id="class-names-input" rows="8" class="w-full p-3 border rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none mb-3"></textarea>
+            <div class="flex justify-end gap-2">
+                <button onclick="toggleSettings()" class="px-4 py-2 text-xs bg-gray-200 text-gray-700 rounded font-medium">Cancel</button>
+                <button onclick="saveNewClassList()" class="px-4 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded font-medium">Save to Cloud</button>
+            </div>
+        </div>
+
+        <!-- Controls Bar -->
         <div class="bg-white shadow rounded-lg p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="w-full sm:w-72">
-                <input type="text" id="search-input" placeholder="Search your name..." 
+                <input type="text" id="search-input" placeholder="Search student name..." 
                     class="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                <button onclick="copySummary()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-2 rounded font-medium transition-colors">
+                    📋 Copy Summary Report
+                </button>
+                <button onclick="emailSummary()" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2 rounded font-medium transition-colors">
+                    📧 Email Summary
+                </button>
                 <button onclick="resetAllData()" class="text-xs text-red-600 hover:text-red-800 underline px-2 py-1">
                     Reset All Statuses
                 </button>
@@ -64,16 +93,31 @@
                         </tr>
                     </thead>
                     <tbody id="student-table-body" class="divide-y divide-gray-200 text-sm">
-                        <!-- Populated dynamically via JavaScript -->
+                        <!-- Populated dynamically from Firebase -->
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript Application Logic -->
+    <!-- Firebase Configuration & Logic Script -->
     <script>
-        const studentNames = [
+        // TODO: Replace the configuration below with your own Firebase project credentials from Step 3
+        const firebaseConfig = {
+          apiKey: "AIzaSyAASZ1AkzjIb-_khR-QFgGkI5xz3nT3uxo",
+          authDomain: "student-tracker-deaf7.firebaseapp.com",
+          databaseURL: "https://student-tracker-deaf7-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "student-tracker-deaf7",
+          storageBucket: "student-tracker-deaf7.firebasestorage.app",
+          messagingSenderId: "105298088886",
+          appId: "1:105298088886:web:e57dba7e09c6417b8ae717"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const defaultStudents = [
             "AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH", "EDDY", "EZRA", 
             "FEBRIAN", "JOSIAH", "KEISHA", "KHAIRYAN", "KHALILULLAH", "EDWIN", 
             "LENARD", "LIU YUHANG", "MOHAMED HAIRI", "MOHAMMAD AARYAN FIKRI", 
@@ -84,50 +128,74 @@
             "SYLVEON", "THAQIF", "YUVANESH", "ZIDNI"
         ];
 
-        // Load saved state from localStorage or initialize defaults
-        let studentData = JSON.parse(localStorage.getItem('student_tracker_data')) || {};
+        let studentNames = [...defaultStudents];
+        let studentData = {};
 
-        studentNames.forEach((name, index) => {
-            const id = index + 1;
-            if (!studentData[id]) {
-                studentData[id] = {
-                    status: 'no_update', // 'no_update', 'on_the_way', 'arrived'
-                    eta: ''
-                };
+        // Listen for live connection status
+        db.ref(".info/connected").on("value", (snap) => {
+            const statusEl = document.getElementById('connection-status');
+            if (snap.val() === true) {
+                statusEl.className = "text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium";
+                statusEl.innerText = "● Live Sync Active";
+            } else {
+                statusEl.className = "text-xs bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full font-medium";
+                statusEl.innerText = "● Disconnected";
             }
         });
 
-        function saveData() {
-            localStorage.setItem('student_tracker_data', JSON.stringify(studentData));
+        // Sync real-time updates from Firebase Database
+        db.ref('tracker').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                if (data.names) studentNames = data.names;
+                if (data.statuses) studentData = data.statuses;
+            } else {
+                // Initialize database if empty
+                initializeCloudData();
+            }
             renderTable();
             updateStats();
+        });
+
+        function initializeCloudData() {
+            let initialStatuses = {};
+            defaultStudents.forEach((_, index) => {
+                initialStatuses[index + 1] = { status: 'no_update', eta: '' };
+            });
+            db.ref('tracker').set({
+                names: defaultStudents,
+                statuses: initialStatuses
+            });
         }
 
         function handleRadioChange(id, newStatus) {
-            const previousStatus = studentData[id].status;
-            const previousEta = studentData[id].eta;
+            const currentItem = studentData[id] || { status: 'no_update', eta: '' };
+            const previousStatus = currentItem.status;
+            const previousEta = currentItem.eta;
 
             if (newStatus === 'on_the_way') {
-                let promptMessage = "Enter your Estimated Arrival Time (e.g., 08:30 AM or 15 mins):";
-                let userInput = prompt(promptMessage, previousEta || "");
-
+                let userInput = prompt("Enter your Estimated Arrival Time (e.g., 08:30 AM or 15 mins):", previousEta || "");
                 if (userInput === null || userInput.trim() === "") {
-                    // User cancelled or left it blank -> revert back to previous status
                     document.querySelector(`input[name="status_${id}"][value="${previousStatus}"]`).checked = true;
                     return;
                 } else {
-                    studentData[id].status = 'on_the_way';
-                    studentData[id].eta = userInput.trim();
+                    db.ref(`tracker/statuses/${id}`).set({
+                        status: 'on_the_way',
+                        eta: userInput.trim()
+                    });
                 }
             } else if (newStatus === 'arrived') {
-                studentData[id].status = 'arrived';
-                studentData[id].eta = 'Arrived at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const arrivalTime = 'Arrived at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                db.ref(`tracker/statuses/${id}`).set({
+                    status: 'arrived',
+                    eta: arrivalTime
+                });
             } else {
-                studentData[id].status = 'no_update';
-                studentData[id].eta = '';
+                db.ref(`tracker/statuses/${id}`).set({
+                    status: 'no_update',
+                    eta: ''
+                });
             }
-
-            saveData();
         }
 
         function renderTable(filterText = '') {
@@ -136,7 +204,7 @@
 
             studentNames.forEach((name, index) => {
                 const id = index + 1;
-                const data = studentData[id];
+                const data = studentData[id] || { status: 'no_update', eta: '' };
 
                 if (filterText && !name.toLowerCase().includes(filterText.toLowerCase())) {
                     return;
@@ -183,35 +251,91 @@
             let arrivedCount = 0;
             let noUpdateCount = 0;
 
-            Object.values(studentData).forEach(item => {
-                if (item.status === 'on_the_way') onTheWayCount++;
+            studentNames.forEach((_, index) => {
+                const id = index + 1;
+                const item = studentData[id];
+                if (!item || item.status === 'no_update') noUpdateCount++;
+                else if (item.status === 'on_the_way') onTheWayCount++;
                 else if (item.status === 'arrived') arrivedCount++;
-                else noUpdateCount++;
             });
 
+            document.getElementById('stat-total').innerText = studentNames.length;
             document.getElementById('stat-ontheway').innerText = onTheWayCount;
             document.getElementById('stat-arrived').innerText = arrivedCount;
             document.getElementById('stat-noupdate').innerText = noUpdateCount;
         }
 
-        function resetAllData() {
-            if (confirm("Are you sure you want to reset all statuses back to 'No update'?")) {
-                studentNames.forEach((_, index) => {
-                    const id = index + 1;
-                    studentData[id] = { status: 'no_update', eta: '' };
-                });
-                saveData();
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('hidden');
+            if (!panel.classList.contains('hidden')) {
+                document.getElementById('class-names-input').value = studentNames.join('\n');
             }
         }
 
-        // Search event listener
+        function saveNewClassList() {
+            const textareaText = document.getElementById('class-names-input').value;
+            const newNames = textareaText.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+            
+            if (newNames.length === 0) {
+                alert("Please enter at least one student name.");
+                return;
+            }
+
+            let newStudentStatuses = {};
+            newNames.forEach((_, index) => {
+                const id = index + 1;
+                newStudentStatuses[id] = studentData[index + 1] || { status: 'no_update', eta: '' };
+            });
+
+            db.ref('tracker').set({
+                names: newNames,
+                statuses: newStudentStatuses
+            }).then(() => {
+                alert("Class list updated successfully across the cloud!");
+                toggleSettings();
+            });
+        }
+
+        function generateSummaryText() {
+            let summary = "STUDENT WHEREABOUTS SUMMARY REPORT\n";
+            summary += "----------------------------------------\n";
+            studentNames.forEach((name, index) => {
+                const id = index + 1;
+                const data = studentData[id] || { status: 'no_update', eta: '' };
+                let statusLabel = "No update";
+                if (data.status === 'on_the_way') statusLabel = `On the way (ETA: ${data.eta})`;
+                if (data.status === 'arrived') statusLabel = `Arrived (${data.eta})`;
+                summary += `${id}. ${name} - ${statusLabel}\n`;
+            });
+            return summary;
+        }
+
+        function copySummary() {
+            navigator.clipboard.writeText(generateSummaryText()).then(() => {
+                alert("Summary report copied to clipboard!");
+            });
+        }
+
+        function emailSummary() {
+            const subject = encodeURIComponent("Class Whereabouts & Status Report");
+            const body = encodeURIComponent(generateSummaryText());
+            window.location.href = `mailto:?subject=${subject}&body=${body}`;
+        }
+
+        function resetAllData() {
+            if (confirm("Are you sure you want to reset all statuses to 'No update'?")) {
+                let resetStatuses = {};
+                studentNames.forEach((_, index) => {
+                    resetStatuses[index + 1] = { status: 'no_update', eta: '' };
+                });
+                db.ref('tracker/statuses').set(resetStatuses);
+            }
+        }
+
         document.getElementById('search-input').addEventListener('input', (e) => {
             renderTable(e.target.value);
         });
-
-        // Initial render on load
-        renderTable();
-        updateStats();
     </script>
 </body>
 </html>
