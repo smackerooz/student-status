@@ -90,9 +90,10 @@
                 <button onclick="deleteCurrentClass()" class="px-3 py-2 text-xs bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded font-medium">Delete Active Class</button>
                 <div class="flex gap-2">
                     <button onclick="toggleSettings()" class="px-4 py-2 text-xs bg-gray-200 text-gray-700 rounded font-medium">Cancel</button>
-                    <button onclick="saveClassConfiguration()" class="px-4 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded font-medium">Save Class to Cloud</button>
+                    <button id="save-class-btn" onclick="saveClassConfiguration()" class="px-4 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed">Save Class to Cloud</button>
                 </div>
             </div>
+            <p id="save-status-msg" class="text-xs mt-2 hidden"></p>
         </div>
 
         <!-- Controls Bar -->
@@ -138,17 +139,26 @@
     <script>
         // TODO: Replace with your Firebase credentials
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
+          apiKey: "AIzaSyAASZ1AkzjIb-_khR-QFgGkI5xz3nT3uxo",
+          authDomain: "student-tracker-deaf7.firebaseapp.com",
+          databaseURL: "https://student-tracker-deaf7-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "student-tracker-deaf7",
+          storageBucket: "student-tracker-deaf7.firebasestorage.app",
+          messagingSenderId: "105298088886",
+          appId: "1:105298088886:web:e57dba7e09c6417b8ae717"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        let db = null;
+        let firebaseReady = false;
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            firebaseReady = true;
+        } catch (err) {
+            console.error("Firebase initialization failed:", err);
+            alert("Firebase failed to initialize. Please check your firebaseConfig credentials in the code.");
+        }
 
         let allClassesData = {};
         let currentClassKey = "Engineering Class (Default)";
@@ -156,42 +166,56 @@
         let studentData = {};
         let editingMode = 'edit'; // 'edit' or 'new'
 
-        db.ref(".info/connected").on("value", (snap) => {
-            const statusEl = document.getElementById('connection-status');
-            if (snap.val() === true) {
-                statusEl.className = "text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium";
-                statusEl.innerText = "● Live Sync";
-            } else {
-                statusEl.className = "text-xs bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full font-medium";
-                statusEl.innerText = "● Disconnected";
-            }
-        });
-
-        db.ref('tracker/classes').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                allClassesData = data;
-                if (!allClassesData[currentClassKey]) {
-                    currentClassKey = Object.keys(allClassesData)[0];
+        // ---- Firebase connection status listener ----
+        if (firebaseReady) {
+            db.ref(".info/connected").on("value", (snap) => {
+                const statusEl = document.getElementById('connection-status');
+                if (snap.val() === true) {
+                    statusEl.className = "text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium";
+                    statusEl.innerText = "● Live Sync";
+                } else {
+                    statusEl.className = "text-xs bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full font-medium";
+                    statusEl.innerText = "● Disconnected";
                 }
-            } else {
-                let initialStatuses = {};
-                const defaultStudents = ["AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH"];
-                defaultStudents.forEach((_, index) => {
-                    initialStatuses[index + 1] = { status: 'no_update', eta: '' };
-                });
-                allClassesData = {
-                    "Engineering Class (Default)": {
-                        passcode: "",
-                        names: defaultStudents,
-                        statuses: initialStatuses
+            });
+
+            // ---- Main data listener ----
+            db.ref('tracker/classes').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    allClassesData = data;
+                    if (!allClassesData[currentClassKey]) {
+                        currentClassKey = Object.keys(allClassesData)[0];
                     }
-                };
-                db.ref('tracker/classes').set(allClassesData);
-            }
-            updateClassDropdown();
-            loadCurrentClassData();
-        });
+                } else {
+                    // Seed default class on first run
+                    let initialStatuses = {};
+                    const defaultStudents = ["AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH"];
+                    defaultStudents.forEach((_, index) => {
+                        initialStatuses[index + 1] = { status: 'no_update', eta: '' };
+                    });
+                    allClassesData = {
+                        "Engineering Class (Default)": {
+                            passcode: "",
+                            names: defaultStudents,
+                            statuses: initialStatuses
+                        }
+                    };
+                    db.ref('tracker/classes').set(allClassesData).catch(err => {
+                        console.error("Failed to seed default class:", err);
+                    });
+                }
+                updateClassDropdown();
+                loadCurrentClassData();
+            }, (error) => {
+                console.error("Database read error:", error);
+                alert("Could not read from database: " + error.message + "\n\nCheck your Realtime Database rules.");
+            });
+        } else {
+            // Firebase not available - show message
+            document.getElementById('connection-status').className = "text-xs bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full font-medium";
+            document.getElementById('connection-status').innerText = "● Firebase Not Configured";
+        }
 
         function updateClassDropdown() {
             const selector = document.getElementById('class-selector');
@@ -233,6 +257,7 @@
             document.getElementById('manage-class-name').value = "";
             document.getElementById('manage-class-passcode').value = "";
             document.getElementById('class-names-input').value = "";
+            hideSaveMessage();
             document.getElementById('settings-panel').classList.remove('hidden');
         }
 
@@ -250,6 +275,7 @@
             document.getElementById('manage-class-name').value = currentClassKey;
             document.getElementById('manage-class-passcode').value = classObj.passcode || '';
             document.getElementById('class-names-input').value = studentNames.join('\n');
+            hideSaveMessage();
             document.getElementById('settings-panel').classList.remove('hidden');
         }
 
@@ -257,7 +283,31 @@
             document.getElementById('settings-panel').classList.toggle('hidden');
         }
 
+        function hideSaveMessage() {
+            const msgEl = document.getElementById('save-status-msg');
+            msgEl.classList.add('hidden');
+            msgEl.innerText = '';
+        }
+
+        function showSaveMessage(text, isError) {
+            const msgEl = document.getElementById('save-status-msg');
+            msgEl.innerText = text;
+            msgEl.className = "text-xs mt-2 " + (isError ? "text-red-600" : "text-emerald-600");
+            msgEl.classList.remove('hidden');
+        }
+
+        function setSavingState(isSaving) {
+            const btn = document.getElementById('save-class-btn');
+            btn.disabled = isSaving;
+            btn.innerText = isSaving ? "Saving..." : "Save Class to Cloud";
+        }
+
         function saveClassConfiguration() {
+            if (!firebaseReady) {
+                alert("Firebase is not initialized. Please check your config.");
+                return;
+            }
+
             const newName = document.getElementById('manage-class-name').value.trim();
             const newPasscode = document.getElementById('manage-class-passcode').value.trim();
             const textareaText = document.getElementById('class-names-input').value;
@@ -268,52 +318,93 @@
                 .filter(n => n.length > 0);
             
             if (!newName || newNames.length === 0) {
+                showSaveMessage("Please provide a class name and at least one student name.", true);
                 alert("Please provide a class name and at least one student name.");
                 return;
             }
 
             if (editingMode === 'new' && allClassesData[newName]) {
+                showSaveMessage("A class with this name already exists.", true);
                 alert("A class with this name already exists. Please choose a different name.");
                 return;
             }
 
+            // Build statuses
+            // - Preserve existing statuses ONLY when editing the SAME class
+            // - Otherwise start fresh with 'no_update'
+            const isSameClassEdit = (editingMode === 'edit' && newName === currentClassKey);
             let newStatuses = {};
             newNames.forEach((_, index) => {
                 const id = index + 1;
-                newStatuses[id] = studentData[index + 1] || { status: 'no_update', eta: '' };
+                if (isSameClassEdit) {
+                    newStatuses[id] = studentData[id] || { status: 'no_update', eta: '' };
+                } else {
+                    newStatuses[id] = { status: 'no_update', eta: '' };
+                }
             });
 
-            if (editingMode === 'edit' && newName !== currentClassKey) {
-                db.ref(`tracker/classes/${currentClassKey}`).remove();
-            }
-
-            db.ref(`tracker/classes/${newName}`).set({
+            const payload = {
                 passcode: newPasscode,
                 names: newNames,
                 statuses: newStatuses
-            }).then(() => {
-                currentClassKey = newName;
-                alert("Class configuration saved successfully to cloud!");
-                document.getElementById('settings-panel').classList.add('hidden');
-            }).catch((error) => {
-                alert("Failed to save: " + error.message);
-            });
+            };
+
+            console.log("Saving class:", newName, "Payload:", payload);
+            setSavingState(true);
+            hideSaveMessage();
+
+            // Determine what to write
+            let chain;
+            if (editingMode === 'edit' && newName !== currentClassKey) {
+                // Renamed class - remove old, then write new
+                chain = db.ref(`tracker/classes/${currentClassKey}`).remove()
+                    .then(() => db.ref(`tracker/classes/${newName}`).set(payload));
+            } else {
+                // New class or editing same class
+                chain = db.ref(`tracker/classes/${newName}`).set(payload);
+            }
+
+            chain
+                .then(() => {
+                    console.log("Save successful.");
+                    currentClassKey = newName;
+                    showSaveMessage("Saved successfully!", false);
+                    setSavingState(false);
+                    // Keep panel open briefly so user sees confirmation, then close
+                    setTimeout(() => {
+                        document.getElementById('settings-panel').classList.add('hidden');
+                        hideSaveMessage();
+                    }, 600);
+                })
+                .catch((error) => {
+                    console.error("Firebase save error:", error);
+                    setSavingState(false);
+                    showSaveMessage("Save failed: " + error.message, true);
+                    alert("Failed to save: " + error.message + "\n\nCommon causes:\n1. Invalid firebaseConfig credentials\n2. Realtime Database rules block writes\n3. No internet connection");
+                });
         }
 
         function deleteCurrentClass() {
+            if (!firebaseReady) { alert("Firebase is not initialized."); return; }
             if (Object.keys(allClassesData).length <= 1) {
                 alert("You cannot delete the last remaining class.");
                 return;
             }
             if (confirm(`Are you sure you want to delete "${currentClassKey}"?`)) {
-                db.ref(`tracker/classes/${currentClassKey}`).remove().then(() => {
-                    alert("Class deleted.");
-                    document.getElementById('settings-panel').classList.add('hidden');
-                });
+                db.ref(`tracker/classes/${currentClassKey}`).remove()
+                    .then(() => {
+                        alert("Class deleted.");
+                        document.getElementById('settings-panel').classList.add('hidden');
+                    })
+                    .catch(err => {
+                        console.error("Delete failed:", err);
+                        alert("Delete failed: " + err.message);
+                    });
             }
         }
 
         function handleRadioChange(id, newStatus) {
+            if (!firebaseReady) { alert("Firebase is not initialized."); return; }
             const currentItem = studentData[id] || { status: 'no_update', eta: '' };
             const previousStatus = currentItem.status;
             const previousEta = currentItem.eta;
@@ -327,6 +418,9 @@
                     db.ref(`tracker/classes/${currentClassKey}/statuses/${id}`).set({
                         status: 'on_the_way',
                         eta: userInput.trim()
+                    }).catch(err => {
+                        console.error("Status update failed:", err);
+                        alert("Could not update status: " + err.message);
                     });
                 }
             } else if (newStatus === 'arrived') {
@@ -334,11 +428,17 @@
                 db.ref(`tracker/classes/${currentClassKey}/statuses/${id}`).set({
                     status: 'arrived',
                     eta: arrivalTime
+                }).catch(err => {
+                    console.error("Status update failed:", err);
+                    alert("Could not update status: " + err.message);
                 });
             } else {
                 db.ref(`tracker/classes/${currentClassKey}/statuses/${id}`).set({
                     status: 'no_update',
                     eta: ''
+                }).catch(err => {
+                    console.error("Status update failed:", err);
+                    alert("Could not update status: " + err.message);
                 });
             }
         }
@@ -412,6 +512,7 @@
         }
 
         function resetClassData() {
+            if (!firebaseReady) { alert("Firebase is not initialized."); return; }
             const classObj = allClassesData[currentClassKey];
             if (classObj && classObj.passcode) {
                 let entered = prompt("Enter class passcode to reset statuses:");
@@ -420,7 +521,11 @@
             if (confirm(`Reset all student statuses for "${currentClassKey}"?`)) {
                 let resetStatuses = {};
                 studentNames.forEach((_, index) => { resetStatuses[index + 1] = { status: 'no_update', eta: '' }; });
-                db.ref(`tracker/classes/${currentClassKey}/statuses`).set(resetStatuses);
+                db.ref(`tracker/classes/${currentClassKey}/statuses`).set(resetStatuses)
+                    .catch(err => {
+                        console.error("Reset failed:", err);
+                        alert("Reset failed: " + err.message);
+                    });
             }
         }
 
