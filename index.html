@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Multi-Class Student Whereabouts Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase App (Compat) & Realtime Database CDN -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
@@ -17,14 +16,17 @@
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900">Student Whereabouts & Status Tracker</h1>
-                    <p class="text-gray-600 text-sm mt-1">Select your class (requires passcode if protected) and update your status live.</p>
+                    <p class="text-gray-600 text-sm mt-1">Select your class and update your status live.</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <span id="connection-status" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full font-medium">
                         Connecting...
                     </span>
-                    <button onclick="toggleSettings()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium border transition-colors">
-                        ⚙️ Manage Classes
+                    <button onclick="openSettingsForNewClass()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium transition-colors shadow-sm">
+                        ➕ Add New Class
+                    </button>
+                    <button onclick="openSettingsForEdit()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium border transition-colors">
+                        ⚙️ Edit Class
                     </button>
                 </div>
             </div>
@@ -38,7 +40,7 @@
                     </select>
                 </div>
                 <div class="text-xs text-blue-700 italic">
-                    🔒 Protected classes require a passcode to view.
+                    🔒 Switching classes requires the class passcode if set.
                 </div>
             </div>
             
@@ -63,10 +65,10 @@
             </div>
         </header>
 
-        <!-- Settings Panel for Class Management & Passcode -->
+        <!-- Settings Panel -->
         <div id="settings-panel" class="hidden bg-white shadow rounded-lg p-6 mb-6 border-2 border-blue-100">
-            <h3 class="text-lg font-bold text-gray-900 mb-1">Class Configuration & Passcode</h3>
-            <p class="text-xs text-gray-600 mb-4">Create a new class or edit the active roster. Set a passcode to restrict access and modifications.</p>
+            <h3 id="settings-title" class="text-lg font-bold text-gray-900 mb-1">Class Configuration</h3>
+            <p class="text-xs text-gray-600 mb-4">Set your class name, optional passcode, and student roster.</p>
             
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                 <div>
@@ -81,7 +83,7 @@
 
             <div class="mb-3">
                 <label class="block text-xs font-semibold text-gray-700 mb-1">Student Names (One per line):</label>
-                <textarea id="class-names-input" rows="6" class="w-full p-3 border rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+                <textarea id="class-names-input" rows="8" class="w-full p-3 border rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Enter student names here..."></textarea>
             </div>
 
             <div class="flex flex-wrap justify-between items-center gap-2">
@@ -148,23 +150,12 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        const defaultStudents = [
-            "AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH", "EDDY", "EZRA", 
-            "FEBRIAN", "JOSIAH", "KEISHA", "KHAIRYAN", "KHALILULLAH", "EDWIN", 
-            "LENARD", "LIU YUHANG", "MOHAMED HAIRI", "MOHAMMAD AARYAN FIKRI", 
-            "MUHAMMAD ANISHQ MATIIN", "MUHAMMAD FARIS", "MUHAMMAD IMAN", 
-            "MUHAMMAD NAUFAL", "MUHAMMAD ZASHRY", "NUR DANIA QAISARA", 
-            "NUR QUESHA", "NURNATASHA", "PONG JUN YAO", "PUTRA INDRA", 
-            "RAHIMI AMSYAR", "RICHIE", "ROSHAN", "SHAVINASH", "SITI NURDIYANA", 
-            "SYLVEON", "THAQIF", "YUVANESH", "ZIDNI"
-        ];
-
         let allClassesData = {};
         let currentClassKey = "Engineering Class (Default)";
         let studentNames = [];
         let studentData = {};
+        let editingMode = 'edit'; // 'edit' or 'new'
 
-        // Connection status indicator
         db.ref(".info/connected").on("value", (snap) => {
             const statusEl = document.getElementById('connection-status');
             if (snap.val() === true) {
@@ -176,7 +167,6 @@
             }
         });
 
-        // Listen to all classes in database
         db.ref('tracker/classes').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -186,6 +176,7 @@
                 }
             } else {
                 let initialStatuses = {};
+                const defaultStudents = ["AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH"];
                 defaultStudents.forEach((_, index) => {
                     initialStatuses[index + 1] = { status: 'no_update', eta: '' };
                 });
@@ -214,7 +205,6 @@
             });
         }
 
-        // Secure Class Switching requiring Passcode if set
         function switchClass(selectedClass) {
             const classObj = allClassesData[selectedClass];
             if (classObj && classObj.passcode) {
@@ -235,6 +225,92 @@
             studentData = classObj.statuses || {};
             renderTable();
             updateStats();
+        }
+
+        function openSettingsForNewClass() {
+            editingMode = 'new';
+            document.getElementById('settings-title').innerText = "Create New Class";
+            document.getElementById('manage-class-name').value = "";
+            document.getElementById('manage-class-passcode').value = "";
+            document.getElementById('class-names-input').value = "";
+            document.getElementById('settings-panel').classList.remove('hidden');
+        }
+
+        function openSettingsForEdit() {
+            const classObj = allClassesData[currentClassKey];
+            if (classObj && classObj.passcode) {
+                let entered = prompt("Enter class passcode to edit settings:");
+                if (entered !== classObj.passcode) {
+                    alert("Incorrect passcode!");
+                    return;
+                }
+            }
+            editingMode = 'edit';
+            document.getElementById('settings-title').innerText = "Edit Current Class";
+            document.getElementById('manage-class-name').value = currentClassKey;
+            document.getElementById('manage-class-passcode').value = classObj.passcode || '';
+            document.getElementById('class-names-input').value = studentNames.join('\n');
+            document.getElementById('settings-panel').classList.remove('hidden');
+        }
+
+        function toggleSettings() {
+            document.getElementById('settings-panel').classList.toggle('hidden');
+        }
+
+        function saveClassConfiguration() {
+            const newName = document.getElementById('manage-class-name').value.trim();
+            const newPasscode = document.getElementById('manage-class-passcode').value.trim();
+            const textareaText = document.getElementById('class-names-input').value;
+            
+            // Clean up student names (removes numbers like "30. " if pasted from a list)
+            const newNames = textareaText.split('\n')
+                .map(n => n.replace(/^\d+[\.\)]\s*/, '').trim())
+                .filter(n => n.length > 0);
+            
+            if (!newName || newNames.length === 0) {
+                alert("Please provide a class name and at least one student name.");
+                return;
+            }
+
+            if (editingMode === 'new' && allClassesData[newName]) {
+                alert("A class with this name already exists. Please choose a different name.");
+                return;
+            }
+
+            let newStatuses = {};
+            newNames.forEach((_, index) => {
+                const id = index + 1;
+                newStatuses[id] = studentData[index + 1] || { status: 'no_update', eta: '' };
+            });
+
+            if (editingMode === 'edit' && newName !== currentClassKey) {
+                db.ref(`tracker/classes/${currentClassKey}`).remove();
+            }
+
+            db.ref(`tracker/classes/${newName}`).set({
+                passcode: newPasscode,
+                names: newNames,
+                statuses: newStatuses
+            }).then(() => {
+                currentClassKey = newName;
+                alert("Class configuration saved successfully to cloud!");
+                document.getElementById('settings-panel').classList.add('hidden');
+            }).catch((error) => {
+                alert("Failed to save: " + error.message);
+            });
+        }
+
+        function deleteCurrentClass() {
+            if (Object.keys(allClassesData).length <= 1) {
+                alert("You cannot delete the last remaining class.");
+                return;
+            }
+            if (confirm(`Are you sure you want to delete "${currentClassKey}"?`)) {
+                db.ref(`tracker/classes/${currentClassKey}`).remove().then(() => {
+                    alert("Class deleted.");
+                    document.getElementById('settings-panel').classList.add('hidden');
+                });
+            }
         }
 
         function handleRadioChange(id, newStatus) {
@@ -275,35 +351,23 @@
                 const id = index + 1;
                 const data = studentData[id] || { status: 'no_update', eta: '' };
 
-                if (filterText && !name.toLowerCase().includes(filterText.toLowerCase())) {
-                    return;
-                }
+                if (filterText && !name.toLowerCase().includes(filterText.toLowerCase())) return;
 
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-gray-50 transition-colors";
-
                 tr.innerHTML = `
                     <td class="py-3 px-4 text-center font-medium text-gray-500">${id}</td>
                     <td class="py-3 px-4 font-semibold text-gray-800">${name}</td>
                     <td class="py-3 px-4">
                         <div class="flex flex-wrap items-center gap-4">
                             <label class="inline-flex items-center text-xs cursor-pointer">
-                                <input type="radio" name="status_${id}" value="no_update" 
-                                    ${data.status === 'no_update' ? 'checked' : ''} 
-                                    onchange="handleRadioChange(${id}, 'no_update')" class="text-blue-600 focus:ring-blue-500">
-                                <span class="ml-1.5 text-gray-600">No update</span>
+                                <input type="radio" name="status_${id}" value="no_update" ${data.status === 'no_update' ? 'checked' : ''} onchange="handleRadioChange(${id}, 'no_update')"> No update
                             </label>
                             <label class="inline-flex items-center text-xs cursor-pointer">
-                                <input type="radio" name="status_${id}" value="on_the_way" 
-                                    ${data.status === 'on_the_way' ? 'checked' : ''} 
-                                    onchange="handleRadioChange(${id}, 'on_the_way')" class="text-amber-600 focus:ring-amber-500">
-                                <span class="ml-1.5 text-amber-700 font-medium">On the way</span>
+                                <input type="radio" name="status_${id}" value="on_the_way" ${data.status === 'on_the_way' ? 'checked' : ''} onchange="handleRadioChange(${id}, 'on_the_way')"> On the way
                             </label>
                             <label class="inline-flex items-center text-xs cursor-pointer">
-                                <input type="radio" name="status_${id}" value="arrived" 
-                                    ${data.status === 'arrived' ? 'checked' : ''} 
-                                    onchange="handleRadioChange(${id}, 'arrived')" class="text-emerald-600 focus:ring-emerald-500">
-                                <span class="ml-1.5 text-emerald-700 font-medium">Arrived school</span>
+                                <input type="radio" name="status_${id}" value="arrived" ${data.status === 'arrived' ? 'checked' : ''} onchange="handleRadioChange(${id}, 'arrived')"> Arrived school
                             </label>
                         </div>
                     </td>
@@ -316,136 +380,51 @@
         }
 
         function updateStats() {
-            let onTheWayCount = 0;
-            let arrivedCount = 0;
-            let noUpdateCount = 0;
-
+            let onTheWayCount = 0, arrivedCount = 0, noUpdateCount = 0;
             studentNames.forEach((_, index) => {
-                const id = index + 1;
-                const item = studentData[id];
+                const item = studentData[index + 1];
                 if (!item || item.status === 'no_update') noUpdateCount++;
                 else if (item.status === 'on_the_way') onTheWayCount++;
                 else if (item.status === 'arrived') arrivedCount++;
             });
-
             document.getElementById('stat-total').innerText = studentNames.length;
             document.getElementById('stat-ontheway').innerText = onTheWayCount;
             document.getElementById('stat-arrived').innerText = arrivedCount;
             document.getElementById('stat-noupdate').innerText = noUpdateCount;
         }
 
-        function toggleSettings() {
-            const panel = document.getElementById('settings-panel');
-            panel.classList.toggle('hidden');
-            if (!panel.classList.contains('hidden')) {
-                const classObj = allClassesData[currentClassKey];
-                if (classObj && classObj.passcode) {
-                    let entered = prompt("Enter class passcode to edit settings:");
-                    if (entered !== classObj.passcode) {
-                        alert("Incorrect passcode!");
-                        panel.classList.add('hidden');
-                        return;
-                    }
-                }
-                document.getElementById('manage-class-name').value = currentClassKey;
-                document.getElementById('manage-class-passcode').value = classObj.passcode || '';
-                document.getElementById('class-names-input').value = studentNames.join('\n');
-            }
-        }
-
-        function saveClassConfiguration() {
-            const newName = document.getElementById('manage-class-name').value.trim();
-            const newPasscode = document.getElementById('manage-class-passcode').value.trim();
-            const textareaText = document.getElementById('class-names-input').value;
-            const newNames = textareaText.split('\n').map(n => n.trim()).filter(n => n.length > 0);
-            
-            if (!newName || newNames.length === 0) {
-                alert("Please provide a class name and at least one student.");
-                return;
-            }
-
-            let newStatuses = {};
-            newNames.forEach((_, index) => {
-                const id = index + 1;
-                newStatuses[id] = studentData[index + 1] || { status: 'no_update', eta: '' };
-            });
-
-            if (newName !== currentClassKey) {
-                db.ref(`tracker/classes/${currentClassKey}`).remove();
-            }
-
-            db.ref(`tracker/classes/${newName}`).set({
-                passcode: newPasscode,
-                names: newNames,
-                statuses: newStatuses
-            }).then(() => {
-                currentClassKey = newName;
-                alert("Class configuration saved successfully!");
-                toggleSettings();
-            });
-        }
-
-        function deleteCurrentClass() {
-            if (Object.keys(allClassesData).length <= 1) {
-                alert("You cannot delete the last remaining class.");
-                return;
-            }
-            if (confirm(`Are you sure you want to delete "${currentClassKey}"?`)) {
-                db.ref(`tracker/classes/${currentClassKey}`).remove().then(() => {
-                    alert("Class deleted.");
-                    toggleSettings();
-                });
-            }
-        }
-
         function generateSummaryText() {
-            let summary = `CLASS SUMMARY REPORT: ${currentClassKey}\n`;
-            summary += "----------------------------------------\n";
+            let summary = `CLASS SUMMARY REPORT: ${currentClassKey}\n----------------------------------------\n`;
             studentNames.forEach((name, index) => {
-                const id = index + 1;
-                const data = studentData[id] || { status: 'no_update', eta: '' };
-                let statusLabel = "No update";
-                if (data.status === 'on_the_way') statusLabel = `On the way (ETA: ${data.eta})`;
-                if (data.status === 'arrived') statusLabel = `Arrived (${data.eta})`;
-                summary += `${id}. ${name} - ${statusLabel}\n`;
+                const data = studentData[index + 1] || { status: 'no_update', eta: '' };
+                let statusLabel = data.status === 'on_the_way' ? `On the way (ETA: ${data.eta})` : data.status === 'arrived' ? `Arrived (${data.eta})` : "No update";
+                summary += `${index + 1}. ${name} - ${statusLabel}\n`;
             });
             return summary;
         }
 
         function copySummary() {
-            navigator.clipboard.writeText(generateSummaryText()).then(() => {
-                alert("Summary report copied to clipboard!");
-            });
+            navigator.clipboard.writeText(generateSummaryText()).then(() => alert("Summary copied!"));
         }
 
         function emailSummary() {
-            const subject = encodeURIComponent(`Status Report: ${currentClassKey}`);
-            const body = encodeURIComponent(generateSummaryText());
-            window.location.href = `mailto:?subject=${subject}&body=${body}`;
+            window.location.href = `mailto:?subject=${encodeURIComponent(`Status Report: ${currentClassKey}`)}&body=${encodeURIComponent(generateSummaryText())}`;
         }
 
         function resetClassData() {
             const classObj = allClassesData[currentClassKey];
             if (classObj && classObj.passcode) {
                 let entered = prompt("Enter class passcode to reset statuses:");
-                if (entered !== classObj.passcode) {
-                    alert("Incorrect passcode!");
-                    return;
-                }
+                if (entered !== classObj.passcode) { alert("Incorrect passcode!"); return; }
             }
-
             if (confirm(`Reset all student statuses for "${currentClassKey}"?`)) {
                 let resetStatuses = {};
-                studentNames.forEach((_, index) => {
-                    resetStatuses[index + 1] = { status: 'no_update', eta: '' };
-                });
+                studentNames.forEach((_, index) => { resetStatuses[index + 1] = { status: 'no_update', eta: '' }; });
                 db.ref(`tracker/classes/${currentClassKey}/statuses`).set(resetStatuses);
             }
         }
 
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            renderTable(e.target.value);
-        });
+        document.getElementById('search-input').addEventListener('input', (e) => renderTable(e.target.value));
     </script>
 </body>
 </html>
