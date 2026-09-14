@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Whereabouts & Status Tracker</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-p-4">
+
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="bg-white shadow rounded-lg p-6 mb-6">
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Student Whereabouts & Status Tracker</h1>
+            <p class="text-gray-600 text-sm">
+                Please locate your name below and select your current status. If you select <strong>On the way</strong>, enter your Estimated Arrival Time (ETA).
+            </p>
+            
+            <!-- Summary Stats -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+                <div class="bg-gray-50 p-3 rounded-lg border text-center">
+                    <span class="block text-xs font-semibold text-gray-500 uppercase">Total Students</span>
+                    <span id="stat-total" class="text-xl font-bold text-gray-800">36</span>
+                </div>
+                <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 text-center">
+                    <span class="block text-xs font-semibold text-amber-700 uppercase">On The Way</span>
+                    <span id="stat-ontheway" class="text-xl font-bold text-amber-700">0</span>
+                </div>
+                <div class="bg-emerald-50 p-3 rounded-lg border border-emerald-200 text-center">
+                    <span class="block text-xs font-semibold text-emerald-700 uppercase">Arrived</span>
+                    <span id="stat-arrived" class="text-xl font-bold text-emerald-700">0</span>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-center">
+                    <span class="block text-xs font-semibold text-slate-600 uppercase">No Update</span>
+                    <span id="stat-noupdate" class="text-xl font-bold text-slate-700">36</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Controls / Search -->
+        <div class="bg-white shadow rounded-lg p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="w-full sm:w-72">
+                <input type="text" id="search-input" placeholder="Search your name..." 
+                    class="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button onclick="resetAllData()" class="text-xs text-red-600 hover:text-red-800 underline px-2 py-1">
+                    Reset All Statuses
+                </button>
+            </div>
+        </div>
+
+        <!-- Student List Table -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
+                        <tr>
+                            <th class="py-3 px-4 text-center w-12">No.</th>
+                            <th class="py-3 px-4">Student Name</th>
+                            <th class="py-3 px-4">Status Selection</th>
+                            <th class="py-3 px-4">Estimated Arrival / Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="student-table-body" class="divide-y divide-gray-200 text-sm">
+                        <!-- Populated dynamically via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        const studentNames = [
+            "AARYAN HARIS", "ANDRY", "ARDY", "DAEVARAJAN", "DANISH", "EDDY", "EZRA", 
+            "FEBRIAN", "JOSIAH", "KEISHA", "KHAIRYAN", "KHALILULLAH", "EDWIN", 
+            "LENARD", "LIU YUHANG", "MOHAMED HAIRI", "MOHAMMAD AARYAN FIKRI", 
+            "MUHAMMAD ANISHQ MATIIN", "MUHAMMAD FARIS", "MUHAMMAD IMAN", 
+            "MUHAMMAD NAUFAL", "MUHAMMAD ZASHRY", "NUR DANIA QAISARA", 
+            "NUR QUESHA", "NURNATASHA", "PONG JUN YAO", "PUTRA INDRA", 
+            "RAHIMI AMSYAR", "RICHIE", "ROSHAN", "SHAVINASH", "SITI NURDIYANA", 
+            "SYLVEON", "THAQIF", "YUVANESH", "ZIDNI"
+        ];
+
+        // Load saved state from localStorage or initialize defaults
+        let studentData = JSON.parse(localStorage.getItem('student_tracker_data')) || {};
+
+        studentNames.forEach((name, index) => {
+            const id = index + 1;
+            if (!studentData[id]) {
+                studentData[id] = {
+                    status: 'no_update', // 'no_update', 'on_the_way', 'arrived'
+                    eta: ''
+                };
+            }
+        });
+
+        function saveData() {
+            localStorage.setItem('student_tracker_data', JSON.stringify(studentData));
+            renderTable();
+            updateStats();
+        }
+
+        function handleRadioChange(id, newStatus) {
+            const previousStatus = studentData[id].status;
+            const previousEta = studentData[id].eta;
+
+            if (newStatus === 'on_the_way') {
+                let promptMessage = "Enter your Estimated Arrival Time (e.g., 08:30 AM or 15 mins):";
+                let userInput = prompt(promptMessage, previousEta || "");
+
+                if (userInput === null || userInput.trim() === "") {
+                    // User cancelled or left it blank -> revert back to previous status
+                    document.querySelector(`input[name="status_${id}"][value="${previousStatus}"]`).checked = true;
+                    return;
+                } else {
+                    studentData[id].status = 'on_the_way';
+                    studentData[id].eta = userInput.trim();
+                }
+            } else if (newStatus === 'arrived') {
+                studentData[id].status = 'arrived';
+                studentData[id].eta = 'Arrived at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+                studentData[id].status = 'no_update';
+                studentData[id].eta = '';
+            }
+
+            saveData();
+        }
+
+        function renderTable(filterText = '') {
+            const tbody = document.getElementById('student-table-body');
+            tbody.innerHTML = '';
+
+            studentNames.forEach((name, index) => {
+                const id = index + 1;
+                const data = studentData[id];
+
+                if (filterText && !name.toLowerCase().includes(filterText.toLowerCase())) {
+                    return;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition-colors";
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-center font-medium text-gray-500">${id}</td>
+                    <td class="py-3 px-4 font-semibold text-gray-800">${name}</td>
+                    <td class="py-3 px-4">
+                        <div class="flex flex-wrap items-center gap-4">
+                            <label class="inline-flex items-center text-xs cursor-pointer">
+                                <input type="radio" name="status_${id}" value="no_update" 
+                                    ${data.status === 'no_update' ? 'checked' : ''} 
+                                    onchange="handleRadioChange(${id}, 'no_update')" class="text-blue-600 focus:ring-blue-500">
+                                <span class="ml-1.5 text-gray-600">No update</span>
+                            </label>
+                            <label class="inline-flex items-center text-xs cursor-pointer">
+                                <input type="radio" name="status_${id}" value="on_the_way" 
+                                    ${data.status === 'on_the_way' ? 'checked' : ''} 
+                                    onchange="handleRadioChange(${id}, 'on_the_way')" class="text-amber-600 focus:ring-amber-500">
+                                <span class="ml-1.5 text-amber-700 font-medium">On the way</span>
+                            </label>
+                            <label class="inline-flex items-center text-xs cursor-pointer">
+                                <input type="radio" name="status_${id}" value="arrived" 
+                                    ${data.status === 'arrived' ? 'checked' : ''} 
+                                    onchange="handleRadioChange(${id}, 'arrived')" class="text-emerald-600 focus:ring-emerald-500">
+                                <span class="ml-1.5 text-emerald-700 font-medium">Arrived school</span>
+                            </label>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 text-xs text-gray-600">
+                        ${data.eta ? `<span class="bg-gray-100 border px-2 py-1 rounded font-mono text-gray-700">${data.eta}</span>` : '<span class="text-gray-400 italic">None</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateStats() {
+            let onTheWayCount = 0;
+            let arrivedCount = 0;
+            let noUpdateCount = 0;
+
+            Object.values(studentData).forEach(item => {
+                if (item.status === 'on_the_way') onTheWayCount++;
+                else if (item.status === 'arrived') arrivedCount++;
+                else noUpdateCount++;
+            });
+
+            document.getElementById('stat-ontheway').innerText = onTheWayCount;
+            document.getElementById('stat-arrived').innerText = arrivedCount;
+            document.getElementById('stat-noupdate').innerText = noUpdateCount;
+        }
+
+        function resetAllData() {
+            if (confirm("Are you sure you want to reset all statuses back to 'No update'?")) {
+                studentNames.forEach((_, index) => {
+                    const id = index + 1;
+                    studentData[id] = { status: 'no_update', eta: '' };
+                });
+                saveData();
+            }
+        }
+
+        // Search event listener
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            renderTable(e.target.value);
+        });
+
+        // Initial render on load
+        renderTable();
+        updateStats();
+    </script>
+</body>
+</html>
