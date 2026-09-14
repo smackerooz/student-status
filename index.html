@@ -221,7 +221,6 @@
                 let entered = prompt(`Enter passcode for "${selectedClass}":`);
                 if (entered !== classObj.passcode) {
                     alert("Incorrect passcode! Access denied.");
-                    // Revert dropdown back to current active class
                     document.getElementById('class-selector').value = currentClassKey;
                     return;
                 }
